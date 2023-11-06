@@ -1,33 +1,51 @@
-import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
 import { expect } from 'chai';
-import { Contract } from 'ethers';
 import { ethers } from 'hardhat';
-const { utils, provider } = ethers;
+import { Contract, Signer } from 'ethers';
 
-describe('GuessTheNewNumberChallenge', () => {
-  let target: Contract;
-  let deployer: SignerWithAddress;
-  let attacker: SignerWithAddress;
+const { utils } = ethers;
 
-  before(async () => {
-    [attacker, deployer] = await ethers.getSigners();
+describe('GuessTheNewNumberChallenge', function () {
+  let challenge: Contract;
+  let attack: Contract;
+  let attacker: Signer;
 
-    target = await (
-      await ethers.getContractFactory('GuessTheNewNumberChallenge', deployer)
-    ).deploy({
+  before(async function () {
+    [attacker] = await ethers.getSigners();
+
+    // We assume the type of the deployed contracts matches the type of the factory,
+    // so we typecast it after deployment.
+    const ChallengeFactory = await ethers.getContractFactory(
+      'GuessTheNewNumberChallenge',
+      attacker
+    );
+    challenge = (await ChallengeFactory.deploy({ value: utils.parseEther('1') })) as Contract;
+    await challenge.deployed();
+
+    const AttackFactory = await ethers.getContractFactory('GuessTheNewNumberAttack', attacker);
+    attack = (await AttackFactory.deploy(challenge.address, {
       value: utils.parseEther('1'),
-    });
-
-    await target.deployed();
-
-    target = await target.connect(attacker);
+    })) as Contract;
+    await attack.deployed();
   });
 
-  it('exploit', async () => {
-    /**
-     * YOUR CODE HERE
-     * */
+  it('exploits the GuessTheNewNumberChallenge', async function () {
+    // The attack is expected to be called with 1 ether
+    const tx = await attack.attack({ value: utils.parseEther('1') });
+    await tx.wait();
 
-    expect(await provider.getBalance(target.address)).to.equal(0);
+    // The challenge contract should have a balance of 0 if the attack was successful
+    const challengeBalance = await ethers.provider.getBalance(challenge.address);
+    expect(challengeBalance.toString()).to.equal('0');
+
+    // If there is an "isComplete" function, we check if the challenge was completed.
+    // Here, we assume that "isComplete" exists and returns a boolean.
+    if ('isComplete' in challenge) {
+      const isComplete = await challenge.isComplete();
+      expect(isComplete).to.be.true;
+    } else {
+      console.warn(
+        "The challenge contract does not have an 'isComplete' function to check if it's solved."
+      );
+    }
   });
 });
