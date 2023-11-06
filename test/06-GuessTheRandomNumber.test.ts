@@ -1,33 +1,27 @@
-import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
 import { expect } from 'chai';
-import { Contract } from 'ethers';
-import { ethers, network } from 'hardhat';
-const { utils, provider } = ethers;
+import { ethers } from 'hardhat';
 
-describe('GuessTheRandomNumberChallenge', () => {
-  let target: Contract;
-  let attacker: SignerWithAddress;
-  let deployer: SignerWithAddress;
+describe('GuessTheRandomNumberChallenge', function () {
+  it('Exploit', async function () {
+    // Deploy the contract with 1 ether from the deployer
+    const [deployer] = await ethers.getSigners();
+    const Challenge = await ethers.getContractFactory('GuessTheRandomNumberChallenge');
+    const challenge = await Challenge.deploy({ value: ethers.utils.parseEther('1') });
+    await challenge.deployed();
 
-  before(async () => {
-    [attacker, deployer] = await ethers.getSigners();
+    console.log(`Challenge deployed at address: ${challenge.address}`);
 
-    target = await (
-      await ethers.getContractFactory('GuessTheRandomNumberChallenge', deployer)
-    ).deploy({
-      value: utils.parseEther('1'),
-    });
+    // Read the answer directly from storage slot 0
+    const answerHash = await ethers.provider.getStorageAt(challenge.address, 0);
+    const answer = ethers.BigNumber.from(answerHash);
 
-    await target.deployed();
+    console.log(`Answer retrieved from storage: ${answer.toString()}`);
 
-    target = target.connect(attacker);
-  });
+    // Make the guess with the correct answer
+    const tx = await challenge.guess(answer, { value: ethers.utils.parseEther('1') });
+    await tx.wait();
 
-  it('exploit', async () => {
-    /**
-     * YOUR CODE HERE
-     * */
-
-    expect(await target.isComplete()).to.equal(true);
+    // Check if the challenge is complete
+    expect(await challenge.isComplete()).to.be.true;
   });
 });

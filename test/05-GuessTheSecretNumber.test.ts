@@ -24,10 +24,21 @@ describe('GuessTheSecretNumberChallenge', () => {
   });
 
   it('exploit', async () => {
-    /**
-     * YOUR CODE HERE
-     * */
+    let secretNumber;
+    const answerHash = '0xdb81b4d58595fbbbb592d3661a34cdca14d7ab379441400cbfa1b78bc447c365';
 
+    for (let i = 0; i < 256; i++) {
+      const hexNumber = ethers.utils.hexlify(i);
+
+      const hash = ethers.utils.keccak256(hexNumber);
+
+      if (hash == answerHash) {
+        secretNumber = i;
+        break;
+      }
+    }
+
+    await target.guess(secretNumber, { value: utils.parseEther('1') });
     expect(await target.isComplete()).to.equal(true);
   });
 });
